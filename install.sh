@@ -10,7 +10,7 @@ mkdir -p "$PVM_DIR/bin" "$PVM_DIR/versions"
 
 # 2. 下載 pvm 主腳本
 echo "[pvm] Downloading pvm script..."
-curl -fsSL "https://raw.githubusercontent.com/YOUR_GITHUB_REPO/main/pvm" -o "$PVM_DIR/pvm"
+curl -fsSL "https://raw.githubusercontent.com/dbachelor110/pvm/main/pvm" -o "$PVM_DIR/pvm"
 chmod +x "$PVM_DIR/pvm"
 
 # 3. 設定 PATH 與 hook
