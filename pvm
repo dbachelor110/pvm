@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+set -e
+
+PVM_HOME="${HOME}/.pvm"
+VERSIONS_DIR="$PVM_HOME/versions"
+BIN_DIR="$PVM_HOME/bin"
+CURRENT_FILE="$PVM_HOME/current"
+
+mkdir -p "$VERSIONS_DIR" "$BIN_DIR"
+
+function help() {
+    cat <<EOF
+Podman Version Manager for PHP
+
+Usage:
+  pvm install <version>     Install PHP version
+  pvm uninstall <version>   Uninstall PHP version
+  pvm use <version>         Use PHP version in current shell
+  pvm exec <version> ...    Execute command in specified PHP version
+  pvm ls                    List installed PHP versions
+  pvm current               Show current PHP version
+  pvm auto                  Auto-use version from .pvmrc or .php-version
+  pvm help                  Show this help
+EOF
+}
+
+function install_php() {
+    local version="$1"
+    if [ -z "$version" ]; then
+        echo "Please specify a version, e.g., pvm install 8.3"
+        exit 1
+    fi
+
+    echo "Pulling php:${version}-cli..."
+    podman pull "docker.io/library/php:${version}-cli"
+
+    mkdir -p "$VERSIONS_DIR/$version"
+    echo "installed" > "$VERSIONS_DIR/$version/status"
+    echo "PHP $version installed."
+}
+
+function uninstall_php() {
+    local version="$1"
+    if [ -z "$version" ]; then
+        echo "Please specify a version"
+        exit 1
+    fi
+
+    echo "Removing php:${version}-cli..."
+    podman rmi -f "docker.io/library/php:${version}-cli" || true
+    rm -rf "$VERSIONS_DIR/$version"
+    echo "PHP $version uninstalled."
+}
+
+function use_php() {
+    local version="$1"
+    if [ -z "$version" ]; then
+        echo "Please specify a version"
+        exit 1
+    fi
+    if [ ! -d "$VERSIONS_DIR/$version" ]; then
+        echo "Version $version is not installed."
+        exit 1
+    fi
+
+    echo "$version" > "$CURRENT_FILE"
+
+    cat > "$BIN_DIR/php" <<EOF
+#!/usr/bin/env bash
+podman run --rm -it -v "\$(pwd):/app" -w /app php:${version}-cli php "\$@"
+EOF
+    chmod +x "$BIN_DIR/php"
+
+    echo "Now using PHP $version"
+    echo "Run: export PATH=\"$BIN_DIR:\$PATH\" to use it"
+}
+
+function exec_php() {
+    local version="$1"
+    shift
+    if [ -z "$version" ]; then
+        echo "Please specify a version"
+        exit 1
+    fi
+    if [ ! -d "$VERSIONS_DIR/$version" ]; then
+        echo "Version $version is not installed."
+        exit 1
+    fi
+
+    podman run --rm -it -v "$(pwd):/app" -w /app php:${version}-cli "$@"
+}
+
+function list_php() {
+    echo "Installed PHP versions:"
+    for dir in "$VERSIONS_DIR"/*; do
+        [ -d "$dir" ] || continue
+        ver=$(basename "$dir")
+        if [ -f "$CURRENT_FILE" ] && [ "$ver" = "$(cat "$CURRENT_FILE")" ]; then
+            echo "-> $ver"
+        else
+            echo "   $ver"
+        fi
+    done
+}
+
+function current_php() {
+    if [ -f "$CURRENT_FILE" ]; then
+        echo "Current PHP version: $(cat "$CURRENT_FILE")"
+    else
+        echo "No version in use."
+    fi
+}
+
+function auto_php() {
+    local version_file=""
+    if [ -f ".pvmrc" ]; then
+        version_file=".pvmrc"
+    elif [ -f ".php-version" ]; then
+        version_file=".php-version"
+    fi
+
+    if [ -n "$version_file" ]; then
+        local version
+        version=$(cat "$version_file" | tr -d '[:space:]')
+        if [ -n "$version" ]; then
+            pvm use "$version" >/dev/null 2>&1 || echo "Version $version not installed"
+        fi
+    fi
+}
+
+case "$1" in
+    install) shift; install_php "$@" ;;
+    uninstall) shift; uninstall_php "$@" ;;
+    use) shift; use_php "$@" ;;
+    exec) shift; exec_php "$@" ;;
+    ls) list_php ;;
+    current) current_php ;;
+    auto) auto_php ;;
+    help|--help|-h|"") help ;;
+    *) echo "Unknown command: $1"; help; exit 1 ;;
+esac
