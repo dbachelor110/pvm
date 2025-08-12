@@ -52,6 +52,58 @@ function uninstall_php() {
     echo "PHP $version uninstalled."
 }
 
+function register_php() {
+    local version="$1"
+    local dockerfile_path="$2"
+
+    if [ -z "$version" ]; then
+        echo "Usage: pvm register <version> [dockerfile_path]"
+        exit 1
+    fi
+
+    # 預設路徑：Containerfile > Dockerfile
+    if [ -z "$dockerfile_path" ]; then
+        if [ -f "./Containerfile" ]; then
+            dockerfile_path="./Containerfile"
+        elif [ -f "./Dockerfile" ]; then
+            dockerfile_path="./Dockerfile"
+        else
+            echo "No Dockerfile or Containerfile found in current directory."
+            exit 1
+        fi
+    fi
+
+    if [ ! -f "$dockerfile_path" ]; then
+        echo "Specified Dockerfile not found: $dockerfile_path"
+        exit 1
+    fi
+
+    local image_name="pvm-custom:$version"
+
+    echo "Building image $image_name from $dockerfile_path ..."
+    podman build -t "$image_name" -f "$dockerfile_path" .
+
+    # 建置成功後，寫入 custom_images 映射
+    mkdir -p "$PVM_HOME"
+    local custom_images_file="$PVM_HOME/custom_images"
+
+    # 如果已存在該版本，先刪除舊紀錄
+    if [ -f "$custom_images_file" ]; then
+        grep -v "^$version=" "$custom_images_file" > "$custom_images_file.tmp" || true
+        mv "$custom_images_file.tmp" "$custom_images_file"
+    fi
+
+    echo "$version=$image_name" >> "$custom_images_file"
+
+    # 同時在版本目錄建立標記
+    mkdir -p "$VERSIONS_DIR/$version"
+    echo "installed" > "$VERSIONS_DIR/$version/status"
+    echo "$image_name" > "$VERSIONS_DIR/$version/image"
+
+    echo "Registered custom PHP image for version $version: $image_name"
+}
+
+
 function use_php() {
     local version="$1"
     if [ -z "$version" ]; then
@@ -129,6 +181,7 @@ function auto_php() {
 }
 
 case "$1" in
+    register) shift; register_php "$@" ;;
     install) shift; install_php "$@" ;;
     uninstall) shift; uninstall_php "$@" ;;
     use) shift; use_php "$@" ;;
