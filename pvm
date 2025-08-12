@@ -13,14 +13,18 @@ function help() {
 Podman Version Manager for PHP
 
 Usage:
-  pvm install <version>     Install PHP version
-  pvm uninstall <version>   Uninstall PHP version
-  pvm use <version>         Use PHP version in current shell
-  pvm exec <version> ...    Execute command in specified PHP version
-  pvm ls                    List installed PHP versions
-  pvm current               Show current PHP version
-  pvm auto                  Auto-use version from .pvmrc or .php-version
-  pvm help                  Show this help
+  pvm register <version> [path] Register a custom PHP image from Dockerfile or Containerfile
+                                - <version>: version tag to register
+                                - [path]: optional path to Dockerfile or Containerfile
+                                  Defaults to current directory, Containerfile preferred
+  pvm install <version>         Install PHP version
+  pvm uninstall <version>       Uninstall PHP version
+  pvm use <version>             Use PHP version in current shell
+  pvm exec <version> ...        Execute command in specified PHP version
+  pvm ls                        List installed PHP versions
+  pvm current                   Show current PHP version
+  pvm auto                      Auto-use version from .pvmrc or .php-version
+  pvm help                      Show this help
 EOF
 }
 
