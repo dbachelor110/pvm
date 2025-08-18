@@ -182,7 +182,44 @@ function exec_php() {
         exit 1
     fi
 
-    podman run --rm -it -v "$(pwd):/app" -w /app php:${version}-cli "$@"
+    local image="docker.io/library/php:${version}-cli"
+    if [ -f "$VERSIONS_DIR/$version/image" ]; then
+        image=$(cat "$VERSIONS_DIR/$version/image")
+    fi
+
+    # 預設用 host network
+    local use_host_network=1
+    local publish_args=()
+    local other_args=()
+
+    # 解析參數，檢查是否有 -p / --publish，若有改用 bridge 並收集 port mapping
+    while (( "$#" )); do
+        case "$1" in
+            -p|--publish)
+                use_host_network=0
+                publish_args+=("$1" "$2")
+                shift 2
+                ;;
+            *)
+                other_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    local podman_args=(-v "$(pwd):/app" -w /app)
+    if [ "$use_host_network" -eq 0 ]; then
+        # 用 bridge 網路並加入 port mapping
+        podman_args+=("${publish_args[@]}")
+    fi
+    if [ -n "$PVM_POD" ]; then
+        podman_args+=(--pod "$PVM_POD")
+    fi
+    if [ -n "$PVM_NETWORK" ]; then
+        podman_args+=(--network "$PVM_NETWORK")
+    fi
+
+    podman run --rm -it "${podman_args[@]}" "$image" "${other_args[@]}"
 }
 
 function list_php() {
