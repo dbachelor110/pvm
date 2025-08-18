@@ -35,12 +35,20 @@ function install_php() {
         exit 1
     fi
 
-    echo "Pulling php:${version}-cli..."
-    podman pull "docker.io/library/php:${version}-cli"
+    local image
+    image=$(get_image_name "$version")
+
+    if [[ "$image" == docker.io/library/php:* ]]; then
+        echo "Pulling $image..."
+        podman pull "$image"
+    else
+        echo "Using custom image $image, skipping pull"
+    fi
 
     mkdir -p "$VERSIONS_DIR/$version"
     echo "installed" > "$VERSIONS_DIR/$version/status"
-    echo "PHP $version installed."
+    echo "$image" > "$VERSIONS_DIR/$version/image"
+    echo "PHP $version installed (image: $image)."
 }
 
 function uninstall_php() {
@@ -50,9 +58,27 @@ function uninstall_php() {
         exit 1
     fi
 
-    echo "Removing php:${version}-cli..."
-    podman rmi -f "docker.io/library/php:${version}-cli" || true
+    echo "Removing PHP version $version..."
+
+    # 移除版本目錄
     rm -rf "$VERSIONS_DIR/$version"
+
+    # 移除 custom_images 記錄
+    local custom_images_file="$PVM_HOME/custom_images"
+    if [ -f "$custom_images_file" ]; then
+        grep -v "^$version=" "$custom_images_file" > "$custom_images_file.tmp" || true
+        mv "$custom_images_file.tmp" "$custom_images_file"
+        echo "Removed custom image registration for version $version"
+    fi
+
+    # 嘗試移除自訂 image
+    local image=""
+    if [ -f "$VERSIONS_DIR/$version/image" ]; then
+        image=$(cat "$VERSIONS_DIR/$version/image")
+        echo "Removing image $image ..."
+        podman rmi -f "$image" || true
+    fi
+
     echo "PHP $version uninstalled."
 }
 
@@ -107,6 +133,18 @@ function register_php() {
     echo "Registered custom PHP image for version $version: $image_name"
 }
 
+function get_image_name() {
+    local version="$1"
+    if [ -f "$PVM_HOME/custom_images" ]; then
+        local image=$(grep "^$version=" "$PVM_HOME/custom_images" | cut -d '=' -f2)
+        if [ -n "$image" ]; then
+            echo "$image"
+            return 0
+        fi
+    fi
+    echo "docker.io/library/php:${version}-cli"
+}
+
 
 function use_php() {
     local version="$1"
@@ -123,11 +161,12 @@ function use_php() {
 
     cat > "$BIN_DIR/php" <<EOF
 #!/usr/bin/env bash
-podman run --rm -it -v "\$(pwd):/app" -w /app php:${version}-cli php "\$@"
+pvm exec "$version" php "\$@"
 EOF
     chmod +x "$BIN_DIR/php"
 
-    echo "Now using PHP $version"
+    local image=$(get_image_name "$version")
+    echo "Now using PHP $version (image: $image)"
     echo "Run: export PATH=\"$BIN_DIR:\$PATH\" to use it"
 }
 
